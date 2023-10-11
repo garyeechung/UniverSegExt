@@ -8,6 +8,7 @@ import slicer
 
 from SegmentEditorEffects import *
 
+logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     """This effect uses Watershed algorithm to partition the input volume"""
@@ -105,18 +106,43 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # from universeg import universeg
 
         # Read input data from Slicer into SimpleITK
+        # The labelImage is the segment layer that we added in Segment Editor in Slicer
+        # Currenrly should be an empty mask, will be replace with predicted mask later.
         labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mergedLabelmapNode.GetName()))
         backgroundImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(sourceVolumeNode.GetName()))
-        logging.warning(labelImage)
 
-        # Run watershed filter
-        featureImage = sitk.GradientMagnitudeRecursiveGaussian(backgroundImage, float(self.scriptedEffect.doubleParameter("ObjectScaleMm")))
-        del backgroundImage
-        f = sitk.MorphologicalWatershedFromMarkersImageFilter()
-        f.SetMarkWatershedLine(False)
-        f.SetFullyConnected(False)
-        labelImage = f.Execute(featureImage, labelImage)
-        del featureImage
+        # Convert SimpleITK.Image instance to numpy.Array
+        # lab = sitk.GetArrayFromImage(labelImage)
+        img = sitk.GetArrayFromImage(backgroundImage)
+
+        # According to the official repo: https://github.com/JJGO/UniverSeg
+        # TODO: resize img to (B, 1, 128, 128)
+        # TODO: Normalize values to [0, 1]
+
+        # TODO: instantiate UniverSeg model
+        # model = universeg()
+
+        # TODO: example dataset or user's own data, psudo code as follow
+        # if example:
+        #     use example dataset like oasis or wbc
+        # else:
+        #     read uploaded data
+
+        # prediction = model(
+        #     target_image,        # (B, 1, H, W)
+        #     support_images,      # (B, S, 1, H, W)
+        #     support_labels,      # (B, S, 1, H, W)
+        # ) # -> (B, 1, H, W)
+
+        # TODO: convert prob. to binary with the given threshold
+        threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
+        # lab = prediction >= threshold
+
+        # TODO: resize the label mask to the image's original shape, e.g. (600, 512)
+        # lab = resize(lab, original_shape)
+
+        # TODO: replace labelImage with lab
+
         # Pixel type of watershed output is the same as the input. Convert it to int16 now.
         if labelImage.GetPixelID() != sitk.sitkInt16:
             labelImage = sitk.Cast(labelImage, sitk.sitkInt16)

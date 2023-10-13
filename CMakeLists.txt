@@ -19,7 +19,6 @@ include(${Slicer_USE_FILE})
 
 #-----------------------------------------------------------------------------
 # Extension modules
-add_subdirectory(UniverSegEditor)
 add_subdirectory(UniverSeg)
 ## NEXT_MODULE
 

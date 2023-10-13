@@ -128,6 +128,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         model.to(device)
 
         # TODO: example dataset or user's own data, psudo code as follow
+        # NOTE: failed to import example_data
+        from SegmentEditorUniverSegLib import wbc
+        d_support = wbc.WBCDataset('JTSC', split='support', label='cytoplasm')
+        logging.warning(d_support)
 
         # if example:
         #     use example dataset like oasis or wbc

@@ -6,14 +6,14 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 
 
-class SegmentEditorUniverSegEditor(ScriptedLoadableModule):
+class SegmentEditorUniverSeg(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "SegmentEditorUniverSegEditor"
+        self.parent.title = "SegmentEditorUniverSeg"
         self.parent.categories = ["Segmentation"]
         self.parent.dependencies = ["Segmentations"]
         self.parent.contributors = ["Andras Lasso (PerkLab)"]
@@ -31,7 +31,7 @@ class SegmentEditorUniverSegEditor(ScriptedLoadableModule):
         instance.self().register()
 
 
-class SegmentEditorUniverSegEditorTest(ScriptedLoadableModuleTest):
+class SegmentEditorUniverSegTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -47,18 +47,18 @@ class SegmentEditorUniverSegEditorTest(ScriptedLoadableModuleTest):
         """Run as few or as many tests as needed here.
         """
         self.setUp()
-        self.test_UniverSegEditor1()
+        self.test_UniverSeg1()
 
-    def test_UniverSegEditor1(self):
+    def test_UniverSeg1(self):
         """
         Basic automated test of the segmentation method:
         - Create segmentation by placing sphere-shaped seeds
         - Run segmentation
         - Verify results using segment statistics
-        The test can be executed from SelfTests module (test name: SegmentEditorUniverSegEditor)
+        The test can be executed from SelfTests module (test name: SegmentEditorUniverSeg)
         """
 
-        self.delayDisplay("Starting test_UniverSegEditor1")
+        self.delayDisplay("Starting test_UniverSeg1")
 
         import vtkSegmentationCorePython as vtkSegmentationCore
         import SampleData
@@ -109,7 +109,7 @@ class SegmentEditorUniverSegEditorTest(ScriptedLoadableModuleTest):
 
         ##################################
         self.delayDisplay("Run segmentation")
-        segmentEditorWidget.setActiveEffectByName("UniverSegEditor")
+        segmentEditorWidget.setActiveEffectByName("UniverSeg")
         effect = segmentEditorWidget.activeEffect()
         effect.setParameter("ObjectScaleMm", 3.0)
         effect.self().onApply()
@@ -136,4 +136,4 @@ class SegmentEditorUniverSegEditorTest(ScriptedLoadableModuleTest):
         self.assertEqual(round(segStatLogic.statistics["Tumor", "LM volume cc"]), 16)
         self.assertEqual(round(segStatLogic.statistics["Background", "LM volume cc"]), 3010)
 
-        self.delayDisplay('test_UniverSegEditor1 passed')
+        self.delayDisplay('test_UniverSeg1 passed')

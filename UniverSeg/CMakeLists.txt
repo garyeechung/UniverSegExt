@@ -1,13 +1,15 @@
 
 #-----------------------------------------------------------------------------
-set(MODULE_NAME SegmentEditorUniverSegEditor)
+set(MODULE_NAME SegmentEditorUniverSeg)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   ${MODULE_NAME}Lib/__init__.py
   ${MODULE_NAME}Lib/SegmentEditorEffect.py
-  )
+  ${MODULE_NAME}Lib/oasis.py
+  ${MODULE_NAME}Lib/wbc.py
+)
 
 set(MODULE_PYTHON_RESOURCES
   ${MODULE_NAME}Lib/SegmentEditorEffect.png

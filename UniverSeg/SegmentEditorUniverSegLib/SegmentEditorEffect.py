@@ -8,13 +8,14 @@ import slicer
 
 from SegmentEditorEffects import *
 
+logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     """This effect uses Watershed algorithm to partition the input volume"""
 
     def __init__(self, scriptedEffect):
-        scriptedEffect.name = 'TemplateKey'
-        scriptedEffect.perSegment = False  # this effect operates on all segments at once (not on a single selected segment)
+        scriptedEffect.name = 'UniverSeg'
+        scriptedEffect.perSegment = True  # this effect operates on all segments at once (not on a single selected segment)
         scriptedEffect.requireSegments = True  # this effect requires segment(s) existing in the segmentation
         AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
 
@@ -33,22 +34,19 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         return qt.QIcon()
 
     def helpText(self):
-        return """Existing segments are grown to fill the image.
-The effect is different from the Grow from seeds effect in that smoothness of structures can be defined, which can prevent leakage.
-To segment a single object, create a segment and paint inside and create another segment and paint outside on each axis.
-"""
+        return "Given the support set (images + masks), it returns a mask as the same task in support set."
 
     def setupOptionsFrame(self):
 
         # Object scale slider
         self.objectScaleMmSlider = slicer.qMRMLSliderWidget()
         self.objectScaleMmSlider.setMRMLScene(slicer.mrmlScene)
-        self.objectScaleMmSlider.quantity = "length"  # get unit, precision, etc. from MRML unit node
+        # self.objectScaleMmSlider.quantity = "length"  # get unit, precision, etc. from MRML unit node
         self.objectScaleMmSlider.minimum = 0
-        self.objectScaleMmSlider.maximum = 10
-        self.objectScaleMmSlider.value = 2.0
+        self.objectScaleMmSlider.maximum = 100
+        # self.objectScaleMmSlider.value = 50
         self.objectScaleMmSlider.setToolTip('Increasing this value smooths the segmentation and reduces leaks. This is the sigma used for edge detection.')
-        self.scriptedEffect.addLabeledOptionsWidget("Object scale:", self.objectScaleMmSlider)
+        self.scriptedEffect.addLabeledOptionsWidget("Threshold(%):", self.objectScaleMmSlider)
         self.objectScaleMmSlider.connect('valueChanged(double)', self.updateMRMLFromGUI)
 
         # Apply button
@@ -58,12 +56,35 @@ To segment a single object, create a segment and paint inside and create another
         self.scriptedEffect.addOptionsWidget(self.applyButton)
         self.applyButton.connect('clicked()', self.onApply)
 
+        # Upload File button
+        self.uploadButton = qt.QPushButton("Upload File")
+        self.uploadButton.objectName = self.__class__.__name__ + 'Upload'
+        self.uploadButton.setToolTip("Upload a file")
+        self.scriptedEffect.addOptionsWidget(self.uploadButton)
+        self.uploadButton.connect('clicked()', self.onUpload)
+
+    def onUpload(self):
+        logging.info("Upload button clicked")
+        options = qt.QFileDialog.Options()
+        options |= qt.QFileDialog.DontUseNativeDialog
+        fileName, _ = qt.QFileDialog.getOpenFileName(None,"QFileDialog.getOpenFileName()", "","All Files (*);;Python Files (*.py)", options=options)
+        if fileName:
+            logging.info(fileName)
+            self.uploadButton.setText(fileName)
+            # TODO: Add code here to handle the file. For example, you could read its content
+            # and perform some operation.
+            # with open(fileName, 'r') as f:
+            #     print(f.read())
+    def activate(self):
+        # Nothing to do here
+        pass
+
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
         return slicer.util.mainWindow().cursor
 
     def setMRMLDefaults(self):
-        self.scriptedEffect.setParameterDefault("ObjectScaleMm", 2.0)
+        self.scriptedEffect.setParameterDefault("ObjectScaleMm", 50)
 
     def updateGUIFromMRML(self):
         objectScaleMm = self.scriptedEffect.doubleParameter("ObjectScaleMm")
@@ -75,10 +96,6 @@ To segment a single object, create a segment and paint inside and create another
         self.scriptedEffect.setParameter("ObjectScaleMm", self.objectScaleMmSlider.value)
 
     def onApply(self):
-
-        # Make sure the user wants to do the operation, even if the segment is not visible
-        if not self.scriptedEffect.confirmCurrentSegmentVisible():
-            return
 
         # Get list of visible segment IDs, as the effect ignores hidden segments.
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
@@ -109,17 +126,56 @@ To segment a single object, create a segment and paint inside and create another
         # Run segmentation algorithm
         import SimpleITK as sitk
         import sitkUtils
+        from universeg import universeg
+        import torch
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logging.warning(f"{os.listdir()}")
+        logging.warning(f"{device}")
+
         # Read input data from Slicer into SimpleITK
+        # The labelImage is the segment layer that we added in Segment Editor in Slicer
+        # Currenrly should be an empty mask, will be replace with predicted mask later.
         labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mergedLabelmapNode.GetName()))
         backgroundImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(sourceVolumeNode.GetName()))
-        # Run watershed filter
-        featureImage = sitk.GradientMagnitudeRecursiveGaussian(backgroundImage, float(self.scriptedEffect.doubleParameter("ObjectScaleMm")))
-        del backgroundImage
-        f = sitk.MorphologicalWatershedFromMarkersImageFilter()
-        f.SetMarkWatershedLine(False)
-        f.SetFullyConnected(False)
-        labelImage = f.Execute(featureImage, labelImage)
-        del featureImage
+
+        # Convert SimpleITK.Image instance to numpy.Array
+        # lab = sitk.GetArrayFromImage(labelImage)
+        img = sitk.GetArrayFromImage(backgroundImage)
+
+        # According to the official repo: https://github.com/JJGO/UniverSeg
+        # TODO: resize img to (B, 1, 128, 128)
+        # TODO: Normalize values to [0, 1]
+
+        # TODO: instantiate UniverSeg model
+        model = universeg(pretrained=True)
+        model.to(device)
+
+        # TODO: example dataset or user's own data, psudo code as follow
+        # NOTE: failed to import example_data
+        from SegmentEditorUniverSegLib import wbc
+        d_support = wbc.WBCDataset('JTSC', split='support', label='cytoplasm')
+        logging.warning(d_support)
+
+        # if example:
+        #     use example dataset like oasis or wbc
+        # else:
+        #     read uploaded data
+
+        # prediction = model(
+        #     target_image,        # (B, 1, H, W)
+        #     support_images,      # (B, S, 1, H, W)
+        #     support_labels,      # (B, S, 1, H, W)
+        # ) # -> (B, 1, H, W)
+
+        # TODO: convert prob. to binary with the given threshold
+        threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
+        # lab = prediction >= threshold
+
+        # TODO: resize the label mask to the image's original shape, e.g. (600, 512)
+        # lab = resize(lab, original_shape)
+
+        # TODO: replace labelImage with lab
+
         # Pixel type of watershed output is the same as the input. Convert it to int16 now.
         if labelImage.GetPixelID() != sitk.sitkInt16:
             labelImage = sitk.Cast(labelImage, sitk.sitkInt16)

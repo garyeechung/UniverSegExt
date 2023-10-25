@@ -56,6 +56,29 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self.scriptedEffect.addOptionsWidget(self.applyButton)
         self.applyButton.connect('clicked()', self.onApply)
 
+        # Upload File button
+        self.uploadButton = qt.QPushButton("Upload File")
+        self.uploadButton.objectName = self.__class__.__name__ + 'Upload'
+        self.uploadButton.setToolTip("Upload a file")
+        self.scriptedEffect.addOptionsWidget(self.uploadButton)
+        self.uploadButton.connect('clicked()', self.onUpload)
+
+    def onUpload(self):
+        logging.info("Upload button clicked")
+        options = qt.QFileDialog.Options()
+        options |= qt.QFileDialog.DontUseNativeDialog
+        fileName, _ = qt.QFileDialog.getOpenFileName(None,"QFileDialog.getOpenFileName()", "","All Files (*);;Python Files (*.py)", options=options)
+        if fileName:
+            logging.info(fileName)
+            self.uploadButton.setText(fileName)
+            # TODO: Add code here to handle the file. For example, you could read its content
+            # and perform some operation.
+            # with open(fileName, 'r') as f:
+            #     print(f.read())
+    def activate(self):
+        # Nothing to do here
+        pass
+
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
         return slicer.util.mainWindow().cursor

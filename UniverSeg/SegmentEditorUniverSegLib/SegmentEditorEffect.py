@@ -56,12 +56,27 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self.scriptedEffect.addOptionsWidget(self.applyButton)
         self.applyButton.connect('clicked()', self.onApply)
 
+        # Select Directory button
+        self.selectDirectoryButton = qt.QPushButton("Select Support Set Directory")
+        self.selectDirectoryButton.objectName = self.__class__.__name__ + 'Select'
+        self.selectDirectoryButton.setToolTip("Select a directory")
+        self.scriptedEffect.addOptionsWidget(self.selectDirectoryButton)
+        self.selectDirectoryButton.connect('clicked()', self.onSelect)
+
         # Upload File button
         self.uploadButton = qt.QPushButton("Upload File")
         self.uploadButton.objectName = self.__class__.__name__ + 'Upload'
         self.uploadButton.setToolTip("Upload a file")
         self.scriptedEffect.addOptionsWidget(self.uploadButton)
         self.uploadButton.connect('clicked()', self.onUpload)
+    
+    # Since images and masks should be paired, it is better to select a directory
+    def onSelect(self):
+        logging.info("Select button clicked")
+        directory = qt.QFileDialog.getExistingDirectory(None, "Select Directory")
+        if directory:
+            logging.info(directory)
+            self.selectDirectoryButton.setText(directory)
 
     def onUpload(self):
         logging.info("Upload button clicked")

@@ -7,8 +7,9 @@ set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   ${MODULE_NAME}Lib/__init__.py
   ${MODULE_NAME}Lib/SegmentEditorEffect.py
-  ${MODULE_NAME}Lib/oasis.py
-  ${MODULE_NAME}Lib/wbc.py
+  # ${MODULE_NAME}Lib/example_data/__init__.py
+  # ${MODULE_NAME}Lib/example_data/oasis.py
+  # ${MODULE_NAME}Lib/example_data/wbc.py
 )
 
 set(MODULE_PYTHON_RESOURCES

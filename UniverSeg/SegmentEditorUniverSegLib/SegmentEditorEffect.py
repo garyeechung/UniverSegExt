@@ -21,10 +21,14 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         scriptedEffect.perSegment = True  # this effect operates on all segments at once (not on a single selected segment)
         scriptedEffect.requireSegments = True  # this effect requires segment(s) existing in the segmentation
         AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
+<<<<<<< HEAD
         self.volumePath = None
         self.supportSetPath = None
         # pprint(dir(scriptedEffect))
         # pprint(scriptedEffect.children())
+=======
+        self._support_dir = None
+>>>>>>> 2963640410d9ae6bda98f89b14859e686f730c5f
 
     def clone(self):
         # It should not be necessary to modify this method
@@ -77,28 +81,14 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # self.selectVolumeButton.connect('clicked()', self.onSelectVolume)
 
 
-
-    def onSelectVolume(self):
-        logging.info("Select button clicked")
-        try:
-            volume = qt.QFileDialog.getOpenFileName(None, "Select Volume", "", "Volume File (*.nii.gz)")
-            if volume:
-                logging.info(volume)
-                self.volumePath = volume
-        except Exception as e:
-            logging.error(e)
-
     # Since images and masks should be paired, it is better to select a directory
     def onSelect(self):
         logging.info("Select button clicked")
-        try:
-            directory = qt.QFileDialog.getExistingDirectory(None, "Select Directory")
-            if directory:
-                logging.info(directory)
-                self.selectDirectoryButton.setText(directory)
-                self.supportSetPath = directory
-        except Exception as e:
-            logging.error(e)
+        directory = qt.QFileDialog.getExistingDirectory(None, "Select Directory")
+        if directory:
+            logging.info(directory)
+            self.selectDirectoryButton.setText(directory)
+            self._support_dir = directory
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
@@ -147,24 +137,33 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         slicer.vtkSlicerSegmentationsModuleLogic.ExportSegmentsToLabelmapNode(segmentationNode, visibleSegmentIds,
                                                                               mergedLabelmapNode, sourceVolumeNode)
 
-        # Select source volume node as active volume to ensure that operations are performed on the correct volume
-        # Access the Segment Editor widget
-        # segmentEditorWidget = self.scriptedEffect.scriptedSegmentEditorWidget()
-        # Select the source volume in all effects
-        # segmentEditorWidget.setActiveVolumeNode(sourceVolumeNode)
-
-        # segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
-
-
-
         # Run segmentation algorithm
         import SimpleITK as sitk
         import sitkUtils
         from universeg import universeg
         import torch
+        from torchvision import transforms
+        from PIL import Image
+        import numpy as np
+        import glob
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         logging.warning(f"{os.listdir()}")
         logging.warning(f"{device}")
+
+        def resize_and_scale(image_np):
+            # Convert NumPy array to PIL Image
+            image_pil = Image.fromarray(image_np)
+
+            # Resize the image
+            image_pil = image_pil.resize((128, 128))
+
+            # Convert back to NumPy array
+            resized_image_np = np.array(image_pil)
+
+            # Scale pixel values to [0, 1]
+            scaled_image = resized_image_np.astype(np.float32) / 255.0
+
+            return scaled_image
 
         # Read input data from Slicer into SimpleITK
         # The labelImage is the segment layer that we added in Segment Editor in Slicer
@@ -174,12 +173,48 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
         labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mergedLabelmapNode.GetName()))
         backgroundImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(sourceVolumeNode.GetName()))
+        # print(sourceVolumeNode.GetName())
+        # print(segmentationNode.GetName())
 
         logging.warning("backgroundImage:"+str(backgroundImage))
         # Convert SimpleITK.Image instance to numpy.Array
         # lab = sitk.GetArrayFromImage(labelImage)
-        img = sitk.GetArrayFromImage(backgroundImage)
+        target_image = sitk.GetArrayFromImage(backgroundImage)
+        # print(target_image.shape)
+        target_image = resize_and_scale(target_image.reshape(target_image.shape[1],-1))
+        # print(target_image.shape)
 
+        target_image = torch.from_numpy(target_image)
+        target_image = target_image.unsqueeze(0)
+        target_image = target_image.to(device)
+        print(target_image.shape)
+
+        # Read and transform the support images
+        def process_image(image_path):
+            # Load image
+            image = Image.open(image_path).convert('RGB')
+            # print(np.array(image).shape)
+            transform = transforms.Compose([
+                    transforms.Resize((128, 128)),  # Resize to 128x128
+                    transforms.Grayscale(),         # Convert to grayscale
+                    transforms.ToTensor(),          # Convert to tensor
+                ])
+
+            # Apply transformations
+            tensor_image = transform(image)
+            # print(tensor_image.shape)
+            return tensor_image
+        
+        support_images = []
+        support_labels = []
+        for support_img in os.listdir(self._support_dir):
+            support_images.append(process_image(os.path.join(self._support_dir, support_img, 'img.png')))
+            support_labels.append(process_image(os.path.join(self._support_dir, support_img, 'seg.png')))
+        print(support_images[0].shape)
+        print(support_labels[0].shape)
+        support_images = torch.stack(support_images).to(device)
+        support_labels = torch.stack(support_labels).to(device)
+        print(support_images.shape)
         # According to the official repo: https://github.com/JJGO/UniverSeg
         # TODO: resize img to (B, 1, 128, 128)
         # TODO: Normalize values to [0, 1]
@@ -199,11 +234,13 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # else:
         #     read uploaded data
 
-        # prediction = model(
-        #     target_image,        # (B, 1, H, W)
-        #     support_images,      # (B, S, 1, H, W)
-        #     support_labels,      # (B, S, 1, H, W)
-        # ) # -> (B, 1, H, W)
+        prediction = model(
+            target_image[None],        # (B, 1, H, W)
+            support_images[None],      # (B, S, 1, H, W)
+            support_labels[None],      # (B, S, 1, H, W)
+        ) # -> (B, 1, H, W)
+        print('done')
+        print(prediction)
 
         # TODO: convert prob. to binary with the given threshold
         threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))

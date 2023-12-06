@@ -68,8 +68,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self.selectDirectoryButton.setToolTip("Select a directory")
         self.scriptedEffect.addOptionsWidget(self.selectDirectoryButton)
         self.selectDirectoryButton.connect('clicked()', self.onSelect)
-
-
+    
     # Since images and masks should be paired, it is better to select a directory
     def onSelect(self):
         logging.warning("Select button clicked")
@@ -78,6 +77,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             logging.warning(directory)
             self.selectDirectoryButton.setText(directory)
             self._support_dir = directory
+
+    def activate(self):
+        # Nothing to do here
+        pass
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
@@ -137,8 +140,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         import numpy as np
         import glob
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logging.warning(f"{os.listdir()}")
-        logging.warning(f"{device}")
+        # logging.warning(f"{os.listdir()}")
+        # logging.warning(f"{device}")
 
         def resize_and_scale(image_np):
             # Convert NumPy array to PIL Image
@@ -177,7 +180,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         target_image = torch.from_numpy(target_image)
         target_image = target_image.unsqueeze(0)
         target_image = target_image.to(device)
-        print(target_image.shape)
+        # print(target_image.shape)
 
         # Read and transform the support images
         def process_image(image_path):
@@ -200,15 +203,12 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         for support_img in os.listdir(self._support_dir):
             support_images.append(process_image(os.path.join(self._support_dir, support_img, 'img.png')))
             support_labels.append(process_image(os.path.join(self._support_dir, support_img, 'seg.png')))
-        print(support_images[0].shape)
-        print(support_labels[0].shape)
+        # print(support_images[0].shape)
+        # print(support_labels[0].shape)
         support_images = torch.stack(support_images).to(device)
         support_labels = torch.stack(support_labels).to(device)
-        print(support_images.shape)
+        # print(support_images.shape)
 
-
-
-        # TODO: instantiate UniverSeg model
         model = universeg(pretrained=True)
         model.to(device)
 
@@ -229,11 +229,13 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         prediction = transforms.functional.resize(prediction, original_shape[1:])
         prediction = torch.sigmoid(prediction)
         # TODO: convert prob. to binary with the given threshold
-        # threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
-        prediction = prediction > 0.5
+        threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
+        threshold = threshold / 100
+        prediction = prediction > threshold
         prediction = prediction.cpu().detach().numpy()
-        logging.warning(f"prediction: {prediction.shape}")
-        logging.warning(f"number of unique values: {np.unique(prediction)}")
+        prediction = prediction.astype(np.int16)
+        # logging.warning(f"prediction: {prediction.shape}")
+        # logging.warning(f"number of unique values: {np.unique(prediction)}")
 
         # update labelImage with the predicted mask
         labelImage = sitk.GetImageFromArray(prediction)

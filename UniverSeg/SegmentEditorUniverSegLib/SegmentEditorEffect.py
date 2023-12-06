@@ -145,20 +145,86 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         import sitkUtils
         from universeg import universeg
         import torch
+        from torchvision import transforms
+        from PIL import Image
+        import numpy as np
+        import glob
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         logging.warning(f"{os.listdir()}")
         logging.warning(f"{device}")
+
+        def resize_and_scale(image_np):
+            # Convert NumPy array to PIL Image
+            image_pil = Image.fromarray(image_np)
+
+            # Resize the image
+            image_pil = image_pil.resize((128, 128))
+
+            # Convert back to NumPy array
+            resized_image_np = np.array(image_pil)
+
+            # Scale pixel values to [0, 1]
+            scaled_image = resized_image_np.astype(np.float32) / 255.0
+
+            return scaled_image
 
         # Read input data from Slicer into SimpleITK
         # The labelImage is the segment layer that we added in Segment Editor in Slicer
         # Currenrly should be an empty mask, will be replace with predicted mask later.
         labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mergedLabelmapNode.GetName()))
         backgroundImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(sourceVolumeNode.GetName()))
+        # print(sourceVolumeNode.GetName())
+        # print(segmentationNode.GetName())
 
         # Convert SimpleITK.Image instance to numpy.Array
         # lab = sitk.GetArrayFromImage(labelImage)
-        img = sitk.GetArrayFromImage(backgroundImage)
+        target_image = sitk.GetArrayFromImage(backgroundImage)
+        # print(target_image.shape)
+        target_image = resize_and_scale(target_image.reshape(target_image.shape[1],-1))
+        # print(target_image.shape)
 
+        target_image = torch.from_numpy(target_image)
+        target_image = target_image.unsqueeze(0)
+        target_image = target_image.to(device)
+        print(target_image.shape)
+
+        # Read and transform the support images
+        def process_image(image_path):
+            # Load image
+            image = Image.open(image_path).convert('RGB')
+            print(np.array(image).shape)
+
+            # Check if the image is grayscale or RGB
+            if image.mode == 'RGB':
+                # Define a transformation pipeline for RGB images
+                transform = transforms.Compose([
+                    transforms.Resize((128, 128)),  # Resize to 128x128
+                    transforms.Grayscale(),         # Convert to grayscale
+                    transforms.ToTensor(),          # Convert to tensor
+                ])
+            else:
+                # Define a transformation pipeline for grayscale images
+                transform = transforms.Compose([
+                    transforms.Resize((128, 128)),  # Resize to 128x128
+                    transforms.Grayscale(),         # Convert to grayscale
+                    transforms.ToTensor(),          # Convert to tensor
+                ])
+
+            # Apply transformations
+            tensor_image = transform(image)
+            print(tensor_image.shape)
+            return tensor_image
+        
+        support_images = []
+        support_labels = []
+        for support_img in os.listdir(self._support_dir):
+            support_images.append(process_image(os.path.join(self._support_dir, support_img, 'img.png')))
+            support_labels.append(process_image(os.path.join(self._support_dir, support_img, 'seg.png')))
+        print(support_images[0].shape)
+        print(support_labels[0].shape)
+        support_images = torch.stack(support_images).to(device)
+        support_labels = torch.stack(support_labels).to(device)
+        print(support_images.shape)
         # According to the official repo: https://github.com/JJGO/UniverSeg
         # TODO: resize img to (B, 1, 128, 128)
         # TODO: Normalize values to [0, 1]
@@ -169,20 +235,22 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
         # TODO: example dataset or user's own data, psudo code as follow
         # NOTE: failed to import example_data
-        from SegmentEditorUniverSegLib import wbc
-        d_support = wbc.WBCDataset('JTSC', split='support', label='cytoplasm')
-        logging.warning(d_support)
+        # from SegmentEditorUniverSegLib import wbc
+        # d_support = wbc.WBCDataset('JTSC', split='support', label='cytoplasm')
+        # logging.warning(d_support)
 
         # if example:
         #     use example dataset like oasis or wbc
         # else:
         #     read uploaded data
 
-        # prediction = model(
-        #     target_image,        # (B, 1, H, W)
-        #     support_images,      # (B, S, 1, H, W)
-        #     support_labels,      # (B, S, 1, H, W)
-        # ) # -> (B, 1, H, W)
+        prediction = model(
+            target_image[None],        # (B, 1, H, W)
+            support_images[None],      # (B, S, 1, H, W)
+            support_labels[None],      # (B, S, 1, H, W)
+        ) # -> (B, 1, H, W)
+        print('done')
+        print(prediction)
 
         # TODO: convert prob. to binary with the given threshold
         threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))

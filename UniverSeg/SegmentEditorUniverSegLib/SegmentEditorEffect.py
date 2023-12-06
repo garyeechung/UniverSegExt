@@ -21,14 +21,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         scriptedEffect.perSegment = True  # this effect operates on all segments at once (not on a single selected segment)
         scriptedEffect.requireSegments = True  # this effect requires segment(s) existing in the segmentation
         AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
-<<<<<<< HEAD
-        self.volumePath = None
-        self.supportSetPath = None
-        # pprint(dir(scriptedEffect))
-        # pprint(scriptedEffect.children())
-=======
+        self._volume_dir = None
         self._support_dir = None
->>>>>>> 2963640410d9ae6bda98f89b14859e686f730c5f
 
     def clone(self):
         # It should not be necessary to modify this method

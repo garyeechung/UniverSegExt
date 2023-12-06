@@ -6,3 +6,4 @@ __pycache__
 
 *_bak.*
 **/*.pyc
+**/data/

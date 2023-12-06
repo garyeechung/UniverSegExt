@@ -6,9 +6,12 @@ import vtk
 
 import slicer
 
+from pprint import pprint
+
 from SegmentEditorEffects import *
 
 logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
+
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     """This effect uses Watershed algorithm to partition the input volume"""
@@ -18,6 +21,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         scriptedEffect.perSegment = True  # this effect operates on all segments at once (not on a single selected segment)
         scriptedEffect.requireSegments = True  # this effect requires segment(s) existing in the segmentation
         AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
+        self.volumePath = None
+        self.supportSetPath = None
+        # pprint(dir(scriptedEffect))
+        # pprint(scriptedEffect.children())
 
     def clone(self):
         # It should not be necessary to modify this method
@@ -45,7 +52,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self.objectScaleMmSlider.minimum = 0
         self.objectScaleMmSlider.maximum = 100
         # self.objectScaleMmSlider.value = 50
-        self.objectScaleMmSlider.setToolTip('Increasing this value smooths the segmentation and reduces leaks. This is the sigma used for edge detection.')
+        self.objectScaleMmSlider.setToolTip(
+        'Increasing this value smooths the segmentation and reduces leaks. This is the sigma used for edge detection.')
         self.scriptedEffect.addLabeledOptionsWidget("Threshold(%):", self.objectScaleMmSlider)
         self.objectScaleMmSlider.connect('valueChanged(double)', self.updateMRMLFromGUI)
 
@@ -63,36 +71,34 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self.scriptedEffect.addOptionsWidget(self.selectDirectoryButton)
         self.selectDirectoryButton.connect('clicked()', self.onSelect)
 
-        # Upload File button
-        self.uploadButton = qt.QPushButton("Upload File")
-        self.uploadButton.objectName = self.__class__.__name__ + 'Upload'
-        self.uploadButton.setToolTip("Upload a file")
-        self.scriptedEffect.addOptionsWidget(self.uploadButton)
-        self.uploadButton.connect('clicked()', self.onUpload)
-    
+        # # Select Volume button
+        # # the selected volume widget is already in the scripted effect, so we just need to connect it to a function
+        # self.selectVolumeButton = self.scriptedEffect.selectVolumeButton()
+        # self.selectVolumeButton.connect('clicked()', self.onSelectVolume)
+
+
+
+    def onSelectVolume(self):
+        logging.info("Select button clicked")
+        try:
+            volume = qt.QFileDialog.getOpenFileName(None, "Select Volume", "", "Volume File (*.nii.gz)")
+            if volume:
+                logging.info(volume)
+                self.volumePath = volume
+        except Exception as e:
+            logging.error(e)
+
     # Since images and masks should be paired, it is better to select a directory
     def onSelect(self):
         logging.info("Select button clicked")
-        directory = qt.QFileDialog.getExistingDirectory(None, "Select Directory")
-        if directory:
-            logging.info(directory)
-            self.selectDirectoryButton.setText(directory)
-
-    def onUpload(self):
-        logging.info("Upload button clicked")
-        options = qt.QFileDialog.Options()
-        options |= qt.QFileDialog.DontUseNativeDialog
-        fileName, _ = qt.QFileDialog.getOpenFileName(None,"QFileDialog.getOpenFileName()", "","All Files (*);;Python Files (*.py)", options=options)
-        if fileName:
-            logging.info(fileName)
-            self.uploadButton.setText(fileName)
-            # TODO: Add code here to handle the file. For example, you could read its content
-            # and perform some operation.
-            # with open(fileName, 'r') as f:
-            #     print(f.read())
-    def activate(self):
-        # Nothing to do here
-        pass
+        try:
+            directory = qt.QFileDialog.getExistingDirectory(None, "Select Directory")
+            if directory:
+                logging.info(directory)
+                self.selectDirectoryButton.setText(directory)
+                self.supportSetPath = directory
+        except Exception as e:
+            logging.error(e)
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
@@ -114,6 +120,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
         # Get list of visible segment IDs, as the effect ignores hidden segments.
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+        # logging.info("segmentationNode:"+str(segmentationNode))
         visibleSegmentIds = vtk.vtkStringArray()
         segmentationNode.GetDisplayNode().GetVisibleSegmentIDs(visibleSegmentIds)
         if visibleSegmentIds.GetNumberOfValues() == 0:
@@ -132,11 +139,23 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         sourceVolumeNode = slicer.vtkMRMLScalarVolumeNode()
         slicer.mrmlScene.AddNode(sourceVolumeNode)
         sourceVolumeNode.SetAndObserveTransformNodeID(segmentationNode.GetTransformNodeID())
-        slicer.vtkSlicerSegmentationsModuleLogic.CopyOrientedImageDataToVolumeNode(self.scriptedEffect.sourceVolumeImageData(), sourceVolumeNode)
+        slicer.vtkSlicerSegmentationsModuleLogic.CopyOrientedImageDataToVolumeNode(
+            self.scriptedEffect.sourceVolumeImageData(), sourceVolumeNode)
         # Generate merged labelmap of all visible segments, as the filter expects a single labelmap with all the labels.
         mergedLabelmapNode = slicer.vtkMRMLLabelMapVolumeNode()
         slicer.mrmlScene.AddNode(mergedLabelmapNode)
-        slicer.vtkSlicerSegmentationsModuleLogic.ExportSegmentsToLabelmapNode(segmentationNode, visibleSegmentIds, mergedLabelmapNode, sourceVolumeNode)
+        slicer.vtkSlicerSegmentationsModuleLogic.ExportSegmentsToLabelmapNode(segmentationNode, visibleSegmentIds,
+                                                                              mergedLabelmapNode, sourceVolumeNode)
+
+        # Select source volume node as active volume to ensure that operations are performed on the correct volume
+        # Access the Segment Editor widget
+        # segmentEditorWidget = self.scriptedEffect.scriptedSegmentEditorWidget()
+        # Select the source volume in all effects
+        # segmentEditorWidget.setActiveVolumeNode(sourceVolumeNode)
+
+        # segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
+
+
 
         # Run segmentation algorithm
         import SimpleITK as sitk
@@ -150,9 +169,13 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # Read input data from Slicer into SimpleITK
         # The labelImage is the segment layer that we added in Segment Editor in Slicer
         # Currenrly should be an empty mask, will be replace with predicted mask later.
+        logging.warning("sourceVolumeNode:"+str(sourceVolumeNode.GetName()))
+        logging.warning("sourceVolumeNode:"+str(sourceVolumeNode))
+
         labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mergedLabelmapNode.GetName()))
         backgroundImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(sourceVolumeNode.GetName()))
 
+        logging.warning("backgroundImage:"+str(backgroundImage))
         # Convert SimpleITK.Image instance to numpy.Array
         # lab = sitk.GetArrayFromImage(labelImage)
         img = sitk.GetArrayFromImage(backgroundImage)
@@ -167,9 +190,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
         # TODO: example dataset or user's own data, psudo code as follow
         # NOTE: failed to import example_data
-        from SegmentEditorUniverSegLib import wbc
-        d_support = wbc.WBCDataset('JTSC', split='support', label='cytoplasm')
-        logging.warning(d_support)
+        # from SegmentEditorUniverSegLib import wbc
+        # d_support = wbc.WBCDataset('JTSC', split='support', label='cytoplasm')
+        # logging.warning(d_support)
 
         # if example:
         #     use example dataset like oasis or wbc
@@ -200,7 +223,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         mergedLabelmapNode.Modified()
 
         # Update segmentation from labelmap node and remove temporary nodes
-        slicer.vtkSlicerSegmentationsModuleLogic.ImportLabelmapToSegmentationNode(mergedLabelmapNode, segmentationNode, visibleSegmentIds)
+        slicer.vtkSlicerSegmentationsModuleLogic.ImportLabelmapToSegmentationNode(mergedLabelmapNode, segmentationNode,
+                                                                                  visibleSegmentIds)
         slicer.mrmlScene.RemoveNode(sourceVolumeNode)
         slicer.mrmlScene.RemoveNode(mergedLabelmapNode)
 

@@ -192,19 +192,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         def process_image(image_path):
             # Load image
             image = Image.open(image_path).convert('RGB')
-            print(np.array(image).shape)
-
-            # Check if the image is grayscale or RGB
-            if image.mode == 'RGB':
-                # Define a transformation pipeline for RGB images
-                transform = transforms.Compose([
-                    transforms.Resize((128, 128)),  # Resize to 128x128
-                    transforms.Grayscale(),         # Convert to grayscale
-                    transforms.ToTensor(),          # Convert to tensor
-                ])
-            else:
-                # Define a transformation pipeline for grayscale images
-                transform = transforms.Compose([
+            # print(np.array(image).shape)
+            transform = transforms.Compose([
                     transforms.Resize((128, 128)),  # Resize to 128x128
                     transforms.Grayscale(),         # Convert to grayscale
                     transforms.ToTensor(),          # Convert to tensor
@@ -212,7 +201,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
             # Apply transformations
             tensor_image = transform(image)
-            print(tensor_image.shape)
+            # print(tensor_image.shape)
             return tensor_image
         
         support_images = []

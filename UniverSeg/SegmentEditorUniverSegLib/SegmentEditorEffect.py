@@ -68,7 +68,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self.selectDirectoryButton.setToolTip("Select a directory")
         self.scriptedEffect.addOptionsWidget(self.selectDirectoryButton)
         self.selectDirectoryButton.connect('clicked()', self.onSelect)
-    
+
+
     # Since images and masks should be paired, it is better to select a directory
     def onSelect(self):
         logging.info("Select button clicked")
@@ -77,25 +78,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             logging.info(directory)
             self.selectDirectoryButton.setText(directory)
             self._support_dir = directory
-
-<<<<<<< HEAD
-=======
-    def onUpload(self):
-        logging.info("Upload button clicked")
-        options = qt.QFileDialog.Options()
-        options |= qt.QFileDialog.DontUseNativeDialog
-        fileName, _ = qt.QFileDialog.getOpenFileName(None,"QFileDialog.getOpenFileName()", "","All Files (*);;Python Files (*.py)", options=options)
-        if fileName:
-            logging.info(fileName)
-            self.uploadButton.setText(fileName)
-            # TODO: Add code here to handle the file. For example, you could read its content
-            # and perform some operation.
-            # with open(fileName, 'r') as f:
-            #     print(f.read())
->>>>>>> parent of 8128abf (commit for pulling from remote)
-    def activate(self):
-        # Nothing to do here
-        pass
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
@@ -154,8 +136,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         import numpy as np
         import glob
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        # logging.warning(f"{os.listdir()}")
-        # logging.warning(f"{device}")
+        logging.warning(f"{os.listdir()}")
+        logging.warning(f"{device}")
 
         def resize_and_scale(image_np):
             # Convert NumPy array to PIL Image
@@ -193,7 +175,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         target_image = torch.from_numpy(target_image)
         target_image = target_image.unsqueeze(0)
         target_image = target_image.to(device)
-        # print(target_image.shape)
+        print(target_image.shape)
 
         # Read and transform the support images
         def process_image(image_path):
@@ -216,14 +198,13 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         for support_img in os.listdir(self._support_dir):
             support_images.append(process_image(os.path.join(self._support_dir, support_img, 'img.png')))
             support_labels.append(process_image(os.path.join(self._support_dir, support_img, 'seg.png')))
-        # print(support_images[0].shape)
-        # print(support_labels[0].shape)
+        print(support_images[0].shape)
+        print(support_labels[0].shape)
         support_images = torch.stack(support_images).to(device)
         support_labels = torch.stack(support_labels).to(device)
         print(support_images.shape)
-        # According to the official repo: https://github.com/JJGO/UniverSeg
-        # TODO: resize img to (B, 1, 128, 128)
-        # TODO: Normalize values to [0, 1]
+
+
 
         # TODO: instantiate UniverSeg model
         model = universeg(pretrained=True)
@@ -249,9 +230,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         prediction = transforms.functional.resize(prediction, original_shape[1:])
         prediction = torch.sigmoid(prediction)
         # TODO: convert prob. to binary with the given threshold
-        threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
-        threshold = threshold / 100
-        prediction = prediction > threshold
+        # threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
+        prediction = prediction > 0.5
         prediction = prediction.cpu().detach().numpy()
         prediction = prediction.astype(np.int16)
         # logging.warning(f"prediction: {prediction.shape}")

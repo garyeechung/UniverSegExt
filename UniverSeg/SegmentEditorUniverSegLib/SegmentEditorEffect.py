@@ -69,13 +69,12 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self.scriptedEffect.addOptionsWidget(self.selectDirectoryButton)
         self.selectDirectoryButton.connect('clicked()', self.onSelect)
 
-
     # Since images and masks should be paired, it is better to select a directory
     def onSelect(self):
-        logging.info("Select button clicked")
+        # logging.info("Select button clicked")
         directory = qt.QFileDialog.getExistingDirectory(None, "Select Directory")
         if directory:
-            logging.info(directory)
+            # logging.info(directory)
             self.selectDirectoryButton.setText(directory)
             self._support_dir = directory
 
@@ -168,6 +167,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # Convert SimpleITK.Image instance to numpy.Array
         # lab = sitk.GetArrayFromImage(labelImage)
         target_image = sitk.GetArrayFromImage(backgroundImage)
+        original_size = target_image.shape
         # print(target_image.shape)
         target_image = resize_and_scale(target_image.reshape(target_image.shape[1],-1))
         # print(target_image.shape)
@@ -176,7 +176,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         target_image = torch.from_numpy(target_image)
         target_image = target_image.unsqueeze(0)
         target_image = target_image.to(device)
-        print(f"target_image: {target_image.shape}")
+        # print(target_image.shape)
 
         # Read and transform the support images
         def process_image(image_path):
@@ -196,8 +196,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         
         support_images = []
         support_labels = []
-        exclude = ['.DS_Store']
-        support_samples = [dir_ for dir_ in os.listdir(self._support_dir) if dir_ not in exclude]
+        exlude = ['.DS_Store']
+        support_samples = [support_img for support_img in os.listdir(self._support_dir) if support_img not in exlude]
         for support_img in support_samples:
             support_images.append(process_image(os.path.join(self._support_dir, support_img, 'img.png')))
             support_labels.append(process_image(os.path.join(self._support_dir, support_img, 'seg.png')))
@@ -206,8 +206,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         support_images = torch.stack(support_images).to(device)
         support_labels = torch.stack(support_labels).to(device)
         # print(support_images.shape)
-
-
+        # According to the official repo: https://github.com/JJGO/UniverSeg
+        # TODO: resize img to (B, 1, 128, 128)
+        # TODO: Normalize values to [0, 1]
 
         # TODO: instantiate UniverSeg model
         model = universeg(pretrained=True)
@@ -229,20 +230,15 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             support_images[None],      # (B, S, 1, H, W)
             support_labels[None],      # (B, S, 1, H, W)
         ) # -> (B, 1, H, W)
+        
         prediction = prediction.squeeze(0)
-        prediction = transforms.functional.resize(prediction, original_shape[1:])
+        prediction = transforms.functional.resize(prediction, original_size[1:])
         prediction = torch.sigmoid(prediction)
-        # TODO: convert prob. to binary with the given threshold
-        # threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
-        prediction = prediction > 0.5
-        prediction = prediction.cpu().detach().numpy()
-        prediction = prediction.astype(np.int16)
-        logging.warning(f"prediction: {prediction.shape}")
-        logging.warning(f"number of unique values: {np.unique(prediction, return_counts=True)}")
-        # print('done')
-        # print(prediction)
+        threshold = self.scriptedEffect.doubleParameter("ObjectScaleMm") / 100
+        prediction = prediction > threshold
+        prediction = prediction.cpu().numpy().astype(np.int16)
 
-        # TODO: replace labelImage with predicted mask
+        # Convert numpy.Array to SimpleITK.Image instance
         labelImage = sitk.GetImageFromArray(prediction)
 
         # Pixel type of watershed output is the same as the input. Convert it to int16 now.

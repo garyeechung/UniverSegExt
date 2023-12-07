@@ -10,7 +10,7 @@ from pprint import pprint
 
 from SegmentEditorEffects import *
 
-logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.warning)
+logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
@@ -71,13 +71,28 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     
     # Since images and masks should be paired, it is better to select a directory
     def onSelect(self):
-        logging.warning("Select button clicked")
+        logging.info("Select button clicked")
         directory = qt.QFileDialog.getExistingDirectory(None, "Select Directory")
         if directory:
-            logging.warning(directory)
+            logging.info(directory)
             self.selectDirectoryButton.setText(directory)
             self._support_dir = directory
 
+<<<<<<< HEAD
+=======
+    def onUpload(self):
+        logging.info("Upload button clicked")
+        options = qt.QFileDialog.Options()
+        options |= qt.QFileDialog.DontUseNativeDialog
+        fileName, _ = qt.QFileDialog.getOpenFileName(None,"QFileDialog.getOpenFileName()", "","All Files (*);;Python Files (*.py)", options=options)
+        if fileName:
+            logging.info(fileName)
+            self.uploadButton.setText(fileName)
+            # TODO: Add code here to handle the file. For example, you could read its content
+            # and perform some operation.
+            # with open(fileName, 'r') as f:
+            #     print(f.read())
+>>>>>>> parent of 8128abf (commit for pulling from remote)
     def activate(self):
         # Nothing to do here
         pass
@@ -133,7 +148,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         import SimpleITK as sitk
         import sitkUtils
         from universeg import universeg
-        import numpy as np
         import torch
         from torchvision import transforms
         from PIL import Image
@@ -172,7 +186,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # Convert SimpleITK.Image instance to numpy.Array
         # lab = sitk.GetArrayFromImage(labelImage)
         target_image = sitk.GetArrayFromImage(backgroundImage)
-        original_shape = target_image.shape
         # print(target_image.shape)
         target_image = resize_and_scale(target_image.reshape(target_image.shape[1],-1))
         # print(target_image.shape)
@@ -207,13 +220,20 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # print(support_labels[0].shape)
         support_images = torch.stack(support_images).to(device)
         support_labels = torch.stack(support_labels).to(device)
-        # print(support_images.shape)
+        print(support_images.shape)
+        # According to the official repo: https://github.com/JJGO/UniverSeg
+        # TODO: resize img to (B, 1, 128, 128)
+        # TODO: Normalize values to [0, 1]
 
+        # TODO: instantiate UniverSeg model
         model = universeg(pretrained=True)
         model.to(device)
 
         # TODO: example dataset or user's own data, psudo code as follow
         # NOTE: failed to import example_data
+        # from SegmentEditorUniverSegLib import wbc
+        # d_support = wbc.WBCDataset('JTSC', split='support', label='cytoplasm')
+        # logging.warning(d_support)
 
         # if example:
         #     use example dataset like oasis or wbc
@@ -236,9 +256,17 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         prediction = prediction.astype(np.int16)
         # logging.warning(f"prediction: {prediction.shape}")
         # logging.warning(f"number of unique values: {np.unique(prediction)}")
+        print('done')
+        print(prediction)
 
-        # update labelImage with the predicted mask
-        labelImage = sitk.GetImageFromArray(prediction)
+        # TODO: convert prob. to binary with the given threshold
+        threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
+        # lab = prediction >= threshold
+
+        # TODO: resize the label mask to the image's original shape, e.g. (600, 512)
+        # lab = resize(lab, original_shape)
+
+        # TODO: replace labelImage with lab
 
         # Pixel type of watershed output is the same as the input. Convert it to int16 now.
         if labelImage.GetPixelID() != sitk.sitkInt16:

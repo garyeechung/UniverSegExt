@@ -136,8 +136,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         import numpy as np
         import glob
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logging.warning(f"{os.listdir()}")
-        logging.warning(f"{device}")
+        # logging.warning(f"{os.listdir()}")
+        # logging.warning(f"{device}")
 
         def resize_and_scale(image_np):
             # Convert NumPy array to PIL Image
@@ -157,8 +157,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # Read input data from Slicer into SimpleITK
         # The labelImage is the segment layer that we added in Segment Editor in Slicer
         # Currenrly should be an empty mask, will be replace with predicted mask later.
-        logging.warning("sourceVolumeNode:"+str(sourceVolumeNode.GetName()))
-        logging.warning("sourceVolumeNode:"+str(sourceVolumeNode))
+        # logging.warning("sourceVolumeNode:"+str(sourceVolumeNode.GetName()))
+        # logging.warning("sourceVolumeNode:"+str(sourceVolumeNode))
 
         labelImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(mergedLabelmapNode.GetName()))
         backgroundImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(sourceVolumeNode.GetName()))
@@ -172,10 +172,11 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         target_image = resize_and_scale(target_image.reshape(target_image.shape[1],-1))
         # print(target_image.shape)
 
+        original_shape = target_image.shape
         target_image = torch.from_numpy(target_image)
         target_image = target_image.unsqueeze(0)
         target_image = target_image.to(device)
-        print(target_image.shape)
+        print(f"target_image: {target_image.shape}")
 
         # Read and transform the support images
         def process_image(image_path):
@@ -195,14 +196,16 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         
         support_images = []
         support_labels = []
-        for support_img in os.listdir(self._support_dir):
+        exclude = ['.DS_Store']
+        support_samples = [dir_ for dir_ in os.listdir(self._support_dir) if dir_ not in exclude]
+        for support_img in support_samples:
             support_images.append(process_image(os.path.join(self._support_dir, support_img, 'img.png')))
             support_labels.append(process_image(os.path.join(self._support_dir, support_img, 'seg.png')))
-        print(support_images[0].shape)
-        print(support_labels[0].shape)
+        # print(support_images[0].shape)
+        # print(support_labels[0].shape)
         support_images = torch.stack(support_images).to(device)
         support_labels = torch.stack(support_labels).to(device)
-        print(support_images.shape)
+        # print(support_images.shape)
 
 
 
@@ -234,19 +237,13 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         prediction = prediction > 0.5
         prediction = prediction.cpu().detach().numpy()
         prediction = prediction.astype(np.int16)
-        # logging.warning(f"prediction: {prediction.shape}")
-        # logging.warning(f"number of unique values: {np.unique(prediction)}")
-        print('done')
-        print(prediction)
+        logging.warning(f"prediction: {prediction.shape}")
+        logging.warning(f"number of unique values: {np.unique(prediction, return_counts=True)}")
+        # print('done')
+        # print(prediction)
 
-        # TODO: convert prob. to binary with the given threshold
-        threshold = float(self.scriptedEffect.doubleParameter("ObjectScaleMm"))
-        # lab = prediction >= threshold
-
-        # TODO: resize the label mask to the image's original shape, e.g. (600, 512)
-        # lab = resize(lab, original_shape)
-
-        # TODO: replace labelImage with lab
+        # TODO: replace labelImage with predicted mask
+        labelImage = sitk.GetImageFromArray(prediction)
 
         # Pixel type of watershed output is the same as the input. Convert it to int16 now.
         if labelImage.GetPixelID() != sitk.sitkInt16:
